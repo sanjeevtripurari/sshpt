@@ -33,7 +33,7 @@ This program is meant for situations where shared keys are not an option.  If al
 
 # Meta
 __license__ = "GNU General Public License (GPL) Version 3"
-__version_info__ = (1, 3, 7)
+__version_info__ = (1, 3, 8)
 __version__ = ".".join(map(str, __version_info__))
 __author__ = 'Dan McDougall <YouKnowWho@YouKnowWhat.com>'
 __second_author__ = 'Jonghak Choi <haginara@gmail.com>'
@@ -68,7 +68,8 @@ def _normalize_hosts(hosts):
         return []
 
     if isinstance(hosts, str):
-        hosts = filter(lambda h: not h.startswith("#"), hosts.splitlines())
+        hosts = filter(lambda h: (not h.startswith("#") and h != ""), hosts.splitlines())
+        hosts = [host.strip() for host in hosts]
 
     return [_parse_hostfile(host) if ':' in host else {
         'host': host, 'username': '', 'password': ''} for host in hosts]
@@ -95,12 +96,18 @@ class SSHPowerTool:
         self.output_queue = None# Queue.Queue() where connection results should be put().  If none is given it will use the OutputThread default (output_queue)
         self.port = 22# Port to use when connecting
         self.ssh_connect_queue = None
+        self._params = {}
 
         self.__dict__.update(**kwargs)
 
     def __call__(self):
         return self.run()
 
+    def params(self, **kwargs):
+        """
+        """
+        self._params.update(kwargs)
+        
     def run(self):
         if self.output_queue is None:
             self.output_queue = startOutputThread(self.verbose, self.outfile)
@@ -139,10 +146,8 @@ class SSHPowerTool:
 
         return self.output_queue
 
-    def queueSSHConnection(self,
-        host, username, password, keyfile, keypass, timeout,
-        commands, local_filepath, remote_filepath,
-        execute, remove, sudo, run_as, port):
+    def queueSSHConnection(self, host, username, password, keyfile, keypass, timeout,
+        commands, local_filepath, remote_filepath, execute, remove, sudo, run_as, port):
         """Add files to the SSH Queue (ssh_connect_queue)"""
         queueObj = {}
         queueObj['host'] = host
@@ -233,70 +238,69 @@ def main():
     """Main program function:  Grabs command-line arguments, starts up threads, and runs the program.
     """
     # Grab command line arguments and the command to run (if any)
-    options = create_argument()
-    if 0 != option_parse(options):
-        return 2
-
-    # Read in the host list to check
-    ## host_auth_file format
-    ## credential@host
-    ## user:pass@host
-    if options.hostfile:
-        # Format:
-        # <user:password>@<host>
-        hosts = options.hostfile.read()
-    elif options.stdin:
-        # if stdin wasn't piped in, prompt the user for it now
-        if not select.select([sys.stdin, ], [], [], 0.0)[0]:
-            sys.stdout.write("Enter list of hosts (one entry per line). ")
-            sys.stdout.write("Ctrl-D to end input.\n")
-        # in either case, read data from stdin
-        hosts = sys.stdin.read()
-    elif options.hosts:
-        hosts = options.hosts.split(":")
-
-    sshpt = SSHPowerTool(hosts=hosts)
-    sshpt.commands = options.commands
-
-    # Check to make sure we were passed at least one command line argument
-    return_code = 0
-
-    # Assign the options to more readable variables
-    sshpt.username = options.username
-    sshpt.password = options.password
-    sshpt.keyfile = options.keyfile
-    sshpt.keypass = options.keypass
-    sshpt.port = options.port
-    sshpt.local_filepath = options.copy_file
-    sshpt.remote_filepath = options.destination
-    sshpt.execute = options.execute
-    sshpt.remove = options.remove
-    sshpt.sudo = options.sudo
-    sshpt.max_threads = options.max_threads
-    sshpt.timeout = options.timeout
-    sshpt.run_as = options.run_as
-    sshpt.verbose = options.verbose
-    sshpt.outfile = options.outfile
-
-    if options.authfile is not None:
-        credentials = open(options.authfile).readline()
-        username, password = credentials.split(":")
-        # Get rid of trailing newline
-        password = password.rstrip('\n')
-
-    # Get the username and password to use when checking hosts
-    if sshpt.username is None:
-        sshpt.username = raw_input('Username: ')
-    if sshpt.keyfile:
-        if sshpt.keypass is None:
-            sshpt.keypass = getpass.getpass('Passphrase: ')
-    elif sshpt.password is None:
-        sshpt.password = getpass.getpass('Password: ')
-        if sshpt.password == '':
-            print '\nPleas type the password'
+    try:
+        options = create_argument()
+        if 0 != option_parse(options):
             return 2
 
-    try:
+        # Read in the host list to check
+        ## host_auth_file format
+        ## credential@host
+        ## user:pass@host
+        if options.hostfile:
+            # Format:
+            # <user:password>@<host>
+            hosts = options.hostfile.read()
+        elif options.stdin:
+            # if stdin wasn't piped in, prompt the user for it now
+            if not select.select([sys.stdin, ], [], [], 0.0)[0]:
+                sys.stdout.write("Enter list of hosts (one entry per line). ")
+                sys.stdout.write("Ctrl-D to end input.\n")
+            # in either case, read data from stdin
+            hosts = sys.stdin.read()
+        elif options.hosts:
+            hosts = options.hosts.split(":")
+
+        sshpt = SSHPowerTool(hosts=hosts)
+        sshpt.commands = options.commands
+
+        # Check to make sure we were passed at least one command line argument
+        return_code = 0
+
+        # Assign the options to more readable variables
+        sshpt.username = options.username
+        sshpt.password = options.password
+        sshpt.keyfile = options.keyfile
+        sshpt.keypass = options.keypass
+        sshpt.port = options.port
+        sshpt.local_filepath = options.copy_file
+        sshpt.remote_filepath = options.destination
+        sshpt.execute = options.execute
+        sshpt.remove = options.remove
+        sshpt.sudo = options.sudo
+        sshpt.max_threads = options.max_threads
+        sshpt.timeout = options.timeout
+        sshpt.run_as = options.run_as
+        sshpt.verbose = options.verbose
+        sshpt.outfile = options.outfile
+
+        if options.authfile is not None:
+            credentials = open(options.authfile).readline()
+            username, password = credentials.split(":")
+            # Get rid of trailing newline
+            password = password.rstrip('\n')
+
+        # Get the username and password to use when checking hosts
+        if sshpt.username is None:
+            sshpt.username = raw_input('Username: ')
+        if sshpt.keyfile:
+            if sshpt.keypass is None:
+                sshpt.keypass = getpass.getpass('Passphrase: ')
+        elif sshpt.password is None:
+            sshpt.password = getpass.getpass('Password: ')
+            if sshpt.password == '':
+                print '\nPleas type the password'
+                return 2
         # This wierd little sequence of loops allows us to hit control-C
         # in the middle of program execution and get immediate results
         output_queue = sshpt()
